@@ -50,10 +50,8 @@
 #include "TSIC.h"
 
 // Initialize inputs/outputs
-TSIC::TSIC(uint8_t signal_pin, uint8_t vcc_pin)
-	: m_signal_pin(signal_pin), m_vcc_pin(vcc_pin) 
+TSIC::TSIC(uint8_t signal_pin) : m_signal_pin(signal_pin)
 {
-    pinMode(m_vcc_pin, OUTPUT);
     pinMode(m_signal_pin, INPUT);
 }
 
@@ -61,21 +59,30 @@ TSIC::TSIC(uint8_t signal_pin, uint8_t vcc_pin)
 uint8_t TSIC::getTemperture(uint16_t *temp_value16){
 		uint16_t temp_value1 = 0;
 		uint16_t temp_value2 = 0;
+		uint16_t timeout_high = 0;
+		uint16_t timeout_low = 0;
+		
+		// wait for a stable high on the bus for at least 1000 microseconds to avoid starting in the middle of a transmission
+		while(true)
+		{			
+			delayMicroseconds(11); // prime number to avoid multiples of 10
 
-		TSIC_ON();
-		delayMicroseconds(50);     // wait for stabilization
-		if(TSIC::readSens(&temp_value1)){}			// get 1st byte
-		else TSIC_EXIT();
-		if(TSIC::readSens(&temp_value2)){}			// get 2nd byte
-		else TSIC_EXIT();
-		if(checkParity(&temp_value1)){}		// parity-check 1st byte
-		else TSIC_EXIT();
-		if(checkParity(&temp_value2)){}		// parity-check 2nd byte
-		else TSIC_EXIT();
+			if (TSIC_LOW) timeout_low += 11;
+			else timeout_low = 0;
+			if( timeout_low > 10000) return 1; // avoid waiting on a permanent low level due to unconnected sensor, abort after 10msec
 
-		TSIC_OFF();		// turn off sensor
+			if (TSIC_HIGH) timeout_high += 11;
+			else timeout_high = 0;
+			if( timeout_high > 1000) break;	// wait for stable high level > 1000 usec on the bus
+		}
+		
+		if(TSIC::readSens(&temp_value1) == 0) return 2;	// get 1st byte
+		if(TSIC::readSens(&temp_value2) == 0) return 3; // get 2nd byte
+		if(checkParity(&temp_value1) == 0) return 4; // parity-check 1st byte
+		if(checkParity(&temp_value2) == 0) return 5; // parity-check 2nd byte
+		
 		*temp_value16 = (temp_value1 << 8) + temp_value2;
-		return 1;
+		return 0;
 }
 
 //-------------Unterprogramme-----------------------------------------------------------------------
@@ -91,32 +98,42 @@ float TSIC::calc_Celsius(uint16_t *temperature16){
 	return celsius;
 }
 
+/* Different temperature conversion required for the Tsic 506 sensors */
+float TSIC::calc_CelsiusTsic506(uint16_t *temperature16){
+	float celsius = 0;
+    celsius = ((((float)(*temperature16)) * 7000) / 2047) - 1000; // conversion equation from TSic's 506 data sheet
+    celsius = celsius / 100;
+	return celsius;
+}
+
 uint8_t TSIC::readSens(uint16_t *temp_value){
 	uint16_t strobelength = 0;
 	uint16_t strobetemp = 0;
 	uint8_t dummy = 0;
-	uint16_t timeout = 0;	// max value for timeout is set in .h file
+	uint16_t timeout = 0;
+
 	while (TSIC_HIGH){	// wait until start bit starts
 		timeout++;
 		delayMicroseconds(10);
-		Cancel();
+		if (timeout > 10000) return 0;
 	}
 	// Measure strobe time, a healthy sensor will go to LOW within a few loops (~60us)
 	// if no sensor is connected, the timeout cancels the operation (-> 100cycles are more than enough for this)
 	strobelength = 0;
-	timeout = 9900;		// max value for timeout is set in .h file
+	timeout = 0;		// max value for timeout is set in .h file
+	
 	while (TSIC_LOW) {    // wait for rising edge
 		strobelength++;
 		timeout++;
 		delayMicroseconds(10);
-		Cancel();
+		if (timeout > 100) return 0;
 	}
 	for (uint8_t i=0; i<9; i++) {
 		// Wait for bit start
 		timeout = 0;
 		while (TSIC_HIGH) { // wait for falling edge
 			timeout++;
-			Cancel();
+			if (timeout > 10000) return 0;
 		}
 		// Delay strobe length
 		timeout = 0;
@@ -126,7 +143,7 @@ uint8_t TSIC::readSens(uint16_t *temp_value){
 			timeout++;
 			dummy++;
 			delayMicroseconds(10);
-			Cancel();
+			if (timeout > 10000) return 0;
 		}
 		*temp_value <<= 1;
 		// Read bit
@@ -137,7 +154,7 @@ uint8_t TSIC::readSens(uint16_t *temp_value){
 		timeout = 0;
 		while (TSIC_LOW) {		// wait for rising edge
 			timeout++;
-			Cancel();
+			if (timeout > 10000) return 0;
 		}
 	}
 	return 1;

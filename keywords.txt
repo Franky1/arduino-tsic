@@ -1,3 +1,4 @@
-TSIC			KEYWORD1
-getTemperture	KEYWORD2
-calc_Celsius	KEYWORD3
+TSIC					KEYWORD1
+getTemperature			KEYWORD2
+calc_Celsius			KEYWORD3
+calc_CelsiusTsic506		KEYWORD4

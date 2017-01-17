@@ -19,6 +19,12 @@ Modifications done in this fork compared to the original version:
 
 For more information see original version.
 
+Remark
+======
+_**17.01.2017 <br>
+Since i don't maintain this repo anymore and the original repo from Schm1tz1 added some of my modifications, i recommend to use the original repo from Schm1tz1. <br>
+He added the TSIC506 sensor and made some improvements, therefore use his repo!**_
+
 Installing the library
 ======================
 For installation just download the contents of this repository into TSIC-folder inside your arduino/libraries and restart your Arduino-IDE. <br>
